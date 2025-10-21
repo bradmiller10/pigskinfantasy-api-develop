@@ -1,0 +1,121 @@
+name: Build and Deploy to Amazon ECS
+
+on:
+  release:
+    types: [published]
+  push:
+    branches:
+      - qa
+      - main
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build
+    if: "startsWith(github.event.head_commit.message, '[RELEASE]')"
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        env:
+          cache-name: cache-node-modules
+        with:
+          # npm cache files are stored in `~/.npm` on Linux/macOS
+          path: ~/.npm
+          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ env.cache-name }}-
+            ${{ runner.os }}-build-
+            ${{ runner.os }}-
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - uses: actions/upload-artifact@v1
+        with:
+          name: dist
+          path: dist
+
+  deploy:
+    name: Deploy to ECS
+    if: "startsWith(github.event.head_commit.message, '[RELEASE]')"
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set Environment
+        run: |
+          touch .env
+          if [[ "${{ github.ref }}" == "refs/heads/qa" ]]; then
+            echo "ENV=qa" >> $GITHUB_ENV
+            echo "DATABASE_HOST=${{ secrets.QA_DATABASE_HOST }}" >> .env
+            echo "DATABASE_PASSWORD=${{ secrets.QA_DATABASE_PASSWORD }}" >> .env
+            echo "DATABASE_PORT=${{ secrets.QA_DATABASE_PORT }}" >> .env
+            echo "JWT_SECRET=${{ secrets.QA_JWT_SECRET }}" >> .env
+            echo "SESSION_SECRET=${{ secrets.QA_SESSION_SECRET }}" >> .env
+            echo "SESSION_SALT=${{ secrets.QA_SESSION_SALT }}" >> .env
+            echo "COOKIE_SECRET=${{ secrets.QA_COOKIE_SECRET }}" >> .env
+            echo "CI_BEARER_TOKEN=${{ secrets.QA_CI_BEARER_TOKEN }}" >> .env
+          else
+            echo "DATABASE_HOST=${{ secrets.PRD_DATABASE_HOST }}" >> .env
+            echo "DATABASE_USER=${{ secrets.PRD_DATABASE_USER }}" >> .env
+            echo "DATABASE_PASSWORD=${{ secrets.PRD_DATABASE_PASSWORD }}" >> .env
+            echo "DATABASE_PORT=${{ secrets.PRD_DATABASE_PORT }}" >> .env
+            echo "JWT_SECRET=${{ secrets.PRD_JWT_SECRET }}" >> .env
+            echo "SESSION_SECRET=${{ secrets.PRD_SESSION_SECRET }}" >> .env
+            echo "SESSION_SALT=${{ secrets.PRD_SESSION_SALT }}" >> .env
+            echo "COOKIE_SECRET=${{ secrets.PRD_COOKIE_SECRET }}" >> .env
+            echo "CI_BEARER_TOKEN=${{ secrets.PRD_CI_BEARER_TOKEN }}" >> .env
+            echo "ENV=prd" >> $GITHUB_ENV
+          fi
+
+          echo "ENV=${{ env.ENV }}" >> .env
+
+      - uses: actions/download-artifact@v1
+        with:
+          name: dist
+          path: dist
+
+      - uses: geekyeggo/delete-artifact@v1
+        with:
+          name: dist
+
+      - name: Create Key & Setup SSH
+        run: |
+          mkdir ~/.ssh && touch ~/.ssh/known_hosts
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" >> ~/.ssh/id_rsa
+          chmod 700 ~/.ssh
+          chmod 600 ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Cleanup
+        run: |
+          rm -rf .vscode
+          rm -rf .github
+          rm -rf src
+          rm -rf test
+          rm .eslintrc.js .gitattributes .gitignore .prettierrc docker-compose.yml Dockerfile environment.d.ts overrides.d.ts README.md tsconfig.build.json tsconfig.json
+          ls -al
+
+      - name: Deploy to Vultr
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/qa" ]]; then
+            rsync -az -e "ssh -o StrictHostKeyChecking=no" . root@api.qa.pigskinfantasyu:/usr/src/api
+          else
+            rsync -az -e "ssh -o StrictHostKeyChecking=no" . root@api.pigskinfantasyu.com:/usr/src/api
+          fi

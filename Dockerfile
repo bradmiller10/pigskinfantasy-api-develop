@@ -12,3 +12,4 @@ COPY overrides.d.ts .
 COPY nest-cli.json .
 COPY webpack-hmr.config.js .
 RUN npm i -g @nestjs/cli
+CMD ["npm", "run", "start:prod"]

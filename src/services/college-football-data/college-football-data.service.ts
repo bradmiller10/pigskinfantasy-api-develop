@@ -185,12 +185,11 @@ export class CollegeFootballDataService {
 
    try {
   const API_KEY = process.env.CFB_API_KEY;
-  const response = await this.$.get(url, {
-    baseURL: 'https://api.collegefootballdata.com/',
-    headers: {
-      Authorization: `Bearer ${QCMSgaCp31+3M+ddY8fYOBacc+0kYpxbFQVchnBGpb0R4zw7kN8dssUnKViyYcFX}`,
-    },
-  }).toPromise();
+const response = await this.$.get(url, {
+  baseURL: 'https://api.collegefootballdata.com/',
+  headers: { Authorization: `Bearer ${API_KEY}` },
+}).toPromise();
+
 
   return response.data as Dto[];
 } catch (e) {

@@ -183,10 +183,17 @@ export class CollegeFootballDataService {
         : ''
     }`;
 
-    try {
-      return (await this.$.get(url).toPromise()).data as Dto[];
-    } catch (e) {
-      throw new Error(`Error from ${url} - ${e.message}`, e);
-    }
-  }
+   try {
+  const API_KEY = process.env.CFB_API_KEY;
+  const response = await this.$.get(url, {
+    baseURL: 'https://api.collegefootballdata.com/',
+    headers: {
+      Authorization: `Bearer ${QCMSgaCp31+3M+ddY8fYOBacc+0kYpxbFQVchnBGpb0R4zw7kN8dssUnKViyYcFX}`,
+    },
+  }).toPromise();
+
+  return response.data as Dto[];
+} catch (e) {
+  throw new Error(`Error from ${url} - ${e.message}`, e);
 }
+
